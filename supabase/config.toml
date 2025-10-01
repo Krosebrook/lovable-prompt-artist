@@ -1,0 +1,7 @@
+project_id = "rwhpbxzattitinywvgpy"
+
+[functions.generate-video-script]
+verify_jwt = true
+
+[functions.generate-storyboard]
+verify_jwt = true
