@@ -1,4 +1,4 @@
-import { getTotalSeconds } from "./durationCalculator";
+import { parseDuration } from "./durationCalculator";
 
 export interface Scene {
   sceneNumber: number;
@@ -72,7 +72,7 @@ export class AnimationEngine {
     
     let cumulativeTime = 0;
     for (let i = 0; i < sceneIndex; i++) {
-      cumulativeTime += getTotalSeconds(this.scenes[i].duration) * 1000;
+      cumulativeTime += parseDuration(this.scenes[i].duration) * 1000;
     }
     
     this.pausedTime = cumulativeTime;
@@ -102,7 +102,7 @@ export class AnimationEngine {
 
   getTotalDuration(): number {
     return this.scenes.reduce((total, scene) => {
-      return total + getTotalSeconds(scene.duration) * 1000;
+      return total + parseDuration(scene.duration) * 1000;
     }, 0);
   }
 
@@ -126,7 +126,7 @@ export class AnimationEngine {
     let cumulativeTime = 0;
     
     for (let i = 0; i < this.scenes.length; i++) {
-      const sceneDuration = getTotalSeconds(this.scenes[i].duration) * 1000;
+      const sceneDuration = parseDuration(this.scenes[i].duration) * 1000;
       
       if (elapsedMs < cumulativeTime + sceneDuration) {
         return {

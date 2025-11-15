@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
-import { Navigation } from "@/components/Navigation";
+import Navigation from "@/components/Navigation";
 import { TemplateCard } from "@/components/templates/TemplateCard";
 import { TemplatePreview } from "@/components/templates/TemplatePreview";
 import { CategoryFilter } from "@/components/templates/CategoryFilter";
