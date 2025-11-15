@@ -18,7 +18,7 @@ export const logAnalyticsEvent = async (
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return;
 
-    await supabase.from('project_analytics').insert({
+    await (supabase.from('project_analytics') as any).insert({
       event_type: eventType,
       project_id: projectId,
       metadata: metadata
@@ -33,17 +33,17 @@ export const getAnalyticsSummary = async () => {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return null;
 
-    const { data, error } = await supabase
-      .from('project_analytics')
+    const { data, error } = await (supabase
+      .from('project_analytics') as any)
       .select('*')
       .eq('user_id', user.id);
 
     if (error) throw error;
 
-    const totalProjects = new Set(data?.map(d => d.project_id)).size;
-    const scriptsGenerated = data?.filter(d => d.event_type === 'script_generated').length || 0;
-    const storyboardsGenerated = data?.filter(d => d.event_type === 'storyboard_generated').length || 0;
-    const projectsShared = data?.filter(d => d.event_type === 'project_shared').length || 0;
+    const totalProjects = new Set(data?.map((d: any) => d.project_id)).size;
+    const scriptsGenerated = data?.filter((d: any) => d.event_type === 'script_generated').length || 0;
+    const storyboardsGenerated = data?.filter((d: any) => d.event_type === 'storyboard_generated').length || 0;
+    const projectsShared = data?.filter((d: any) => d.event_type === 'project_shared').length || 0;
 
     return {
       totalProjects,

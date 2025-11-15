@@ -41,8 +41,8 @@ export const ActivityFeed = ({ projectId }: ActivityFeedProps) => {
 
   const loadActivities = async () => {
     try {
-      const { data, error } = await supabase
-        .from('activity_logs')
+      const { data, error } = await (supabase
+        .from('activity_logs') as any)
         .select('*')
         .eq('project_id', projectId)
         .order('created_at', { ascending: false })

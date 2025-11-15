@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
-import { Navigation } from "@/components/Navigation";
+import Navigation from "@/components/Navigation";
 import { MetricsCard } from "@/components/analytics/MetricsCard";
 import { ChartWrapper } from "@/components/analytics/ChartWrapper";
 import { ActivityTimeline } from "@/components/analytics/ActivityTimeline";
@@ -38,18 +38,18 @@ const Analytics = () => {
       if (!user) return;
 
       // Load analytics events
-      const { data: analytics } = await supabase
-        .from('project_analytics')
+      const { data: analytics } = await (supabase
+        .from('project_analytics') as any)
         .select('*')
         .eq('user_id', user.id)
         .order('created_at', { ascending: false });
 
       if (analytics) {
         // Calculate metrics
-        const uniqueProjects = new Set(analytics.map(a => a.project_id)).size;
-        const scripts = analytics.filter(a => a.event_type === 'script_generated').length;
-        const storyboards = analytics.filter(a => a.event_type === 'storyboard_generated').length;
-        const shares = analytics.filter(a => a.event_type === 'project_shared').length;
+        const uniqueProjects = new Set(analytics.map((a: any) => a.project_id)).size;
+        const scripts = analytics.filter((a: any) => a.event_type === 'script_generated').length;
+        const storyboards = analytics.filter((a: any) => a.event_type === 'storyboard_generated').length;
+        const shares = analytics.filter((a: any) => a.event_type === 'project_shared').length;
 
         setMetrics({
           totalProjects: uniqueProjects,
@@ -62,7 +62,7 @@ const Analytics = () => {
         const last30Days = Array.from({ length: 30 }, (_, i) => {
           const date = subDays(new Date(), 29 - i);
           const dateStr = format(date, 'yyyy-MM-dd');
-          const count = analytics.filter(a => 
+          const count = analytics.filter((a: any) => 
             format(new Date(a.created_at), 'yyyy-MM-dd') === dateStr
           ).length;
           return {
