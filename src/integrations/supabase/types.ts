@@ -14,6 +14,44 @@ export type Database = {
   }
   public: {
     Tables: {
+      public_shares: {
+        Row: {
+          created_at: string
+          expires_at: string | null
+          id: string
+          is_active: boolean
+          project_id: string
+          share_token: string
+          view_count: number
+        }
+        Insert: {
+          created_at?: string
+          expires_at?: string | null
+          id?: string
+          is_active?: boolean
+          project_id: string
+          share_token: string
+          view_count?: number
+        }
+        Update: {
+          created_at?: string
+          expires_at?: string | null
+          id?: string
+          is_active?: boolean
+          project_id?: string
+          share_token?: string
+          view_count?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "public_shares_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "video_projects"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       video_projects: {
         Row: {
           created_at: string | null
@@ -22,6 +60,7 @@ export type Database = {
           storyboard_images: Json | null
           title: string
           topic: string
+          total_duration: string | null
           updated_at: string | null
           user_id: string
         }
@@ -32,6 +71,7 @@ export type Database = {
           storyboard_images?: Json | null
           title: string
           topic: string
+          total_duration?: string | null
           updated_at?: string | null
           user_id: string
         }
@@ -42,6 +82,7 @@ export type Database = {
           storyboard_images?: Json | null
           title?: string
           topic?: string
+          total_duration?: string | null
           updated_at?: string | null
           user_id?: string
         }

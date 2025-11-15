@@ -5,3 +5,6 @@ verify_jwt = true
 
 [functions.generate-storyboard]
 verify_jwt = true
+
+[functions.generate-share-link]
+verify_jwt = true
