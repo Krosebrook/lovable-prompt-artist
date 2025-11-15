@@ -8,6 +8,9 @@ import Auth from "./pages/Auth";
 import NotFound from "./pages/NotFound";
 import ProjectHistory from "./pages/ProjectHistory";
 import SharedProject from "./pages/SharedProject";
+import Analytics from "./pages/Analytics";
+import Templates from "./pages/Templates";
+import Teams from "./pages/Teams";
 
 const queryClient = new QueryClient();
 
@@ -21,6 +24,9 @@ const App = () => (
           <Route path="/" element={<Index />} />
           <Route path="/auth" element={<Auth />} />
           <Route path="/projects" element={<ProjectHistory />} />
+          <Route path="/analytics" element={<Analytics />} />
+          <Route path="/templates" element={<Templates />} />
+          <Route path="/teams" element={<Teams />} />
           <Route path="/share/:token" element={<SharedProject />} />
           {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
           <Route path="*" element={<NotFound />} />
