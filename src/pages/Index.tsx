@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -7,14 +7,19 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
-import { Loader2, Sparkles, Download, Share2 } from "lucide-react";
+import { Loader2, Sparkles, Download, Share2, FileDown } from "lucide-react";
 import Navigation from "@/components/Navigation";
 import ScriptDisplay from "@/components/ScriptDisplay";
 import StoryboardDisplay from "@/components/StoryboardDisplay";
+import DurationSummary from "@/components/DurationSummary";
+import ShareDialog from "@/components/ShareDialog";
+import { exportProjectToPDF } from "@/lib/pdfExport";
+import { calculateTotalDuration } from "@/lib/durationCalculator";
 
 const Index = () => {
   const navigate = useNavigate();
   const { toast } = useToast();
+  const [searchParams] = useSearchParams();
   const [user, setUser] = useState<any>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [isGeneratingImages, setIsGeneratingImages] = useState(false);
@@ -22,6 +27,11 @@ const Index = () => {
   const [topic, setTopic] = useState("");
   const [script, setScript] = useState<any>(null);
   const [storyboardImages, setStoryboardImages] = useState<any[]>([]);
+  const [currentProjectId, setCurrentProjectId] = useState<string | null>(null);
+  const [shareDialogOpen, setShareDialogOpen] = useState(false);
+  const [shareUrl, setShareUrl] = useState<string | null>(null);
+  const [isGeneratingShare, setIsGeneratingShare] = useState(false);
+  const [shareViewCount, setShareViewCount] = useState(0);
 
   useEffect(() => {
     // Check authentication
@@ -30,6 +40,12 @@ const Index = () => {
         navigate("/auth");
       } else {
         setUser(session.user);
+        
+        // Load project if project ID is in URL params
+        const projectId = searchParams.get("project");
+        if (projectId) {
+          loadProject(projectId);
+        }
       }
     });
 
@@ -42,7 +58,37 @@ const Index = () => {
     });
 
     return () => subscription.unsubscribe();
-  }, [navigate]);
+  }, [navigate, searchParams]);
+
+  const loadProject = async (projectId: string) => {
+    try {
+      const { data, error } = await supabase
+        .from("video_projects")
+        .select("*")
+        .eq("id", projectId)
+        .single();
+
+      if (error) throw error;
+
+      setCurrentProjectId(data.id);
+      setTitle(data.title);
+      setTopic(data.topic);
+      setScript(data.script);
+      setStoryboardImages(Array.isArray(data.storyboard_images) ? data.storyboard_images : []);
+
+      toast({
+        title: "Project loaded",
+        description: "Your project has been loaded successfully",
+      });
+    } catch (error: any) {
+      console.error("Error loading project:", error);
+      toast({
+        title: "Error",
+        description: "Failed to load project",
+        variant: "destructive",
+      });
+    }
+  };
 
   const generateScript = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -125,15 +171,20 @@ const Index = () => {
     if (!script || !user) return;
 
     try {
-      const { error } = await supabase.from('video_projects').insert({
+      const totalDuration = calculateTotalDuration(script.scenes);
+
+      const { data, error } = await supabase.from('video_projects').insert({
         user_id: user.id,
         title: title || script.title,
         topic,
         script,
-        storyboard_images: storyboardImages
-      });
+        storyboard_images: storyboardImages,
+        total_duration: totalDuration,
+      }).select().single();
 
       if (error) throw error;
+
+      setCurrentProjectId(data.id);
 
       toast({
         title: "Project saved!",
@@ -143,6 +194,137 @@ const Index = () => {
       toast({
         title: "Error",
         description: error.message || "Failed to save project",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const handleExport = async () => {
+    if (!script || !user) return;
+
+    try {
+      toast({
+        title: "Generating PDF...",
+        description: "This may take a moment",
+      });
+
+      const project = {
+        id: currentProjectId || "temp",
+        title: title || script.title,
+        topic,
+        script,
+        storyboard_images: storyboardImages,
+        total_duration: calculateTotalDuration(script.scenes),
+        created_at: new Date().toISOString(),
+      };
+
+      await exportProjectToPDF(project);
+
+      toast({
+        title: "Success",
+        description: "PDF exported successfully",
+      });
+    } catch (error) {
+      console.error("Error exporting PDF:", error);
+      toast({
+        title: "Error",
+        description: "Failed to export PDF",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const handleShare = async () => {
+    if (!currentProjectId) {
+      toast({
+        title: "Save Required",
+        description: "Please save your project before sharing",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setShareUrl(null);
+    setShareViewCount(0);
+
+    // Check if share link already exists
+    try {
+      const { data, error } = await supabase
+        .from("public_shares")
+        .select("*")
+        .eq("project_id", currentProjectId)
+        .eq("is_active", true)
+        .maybeSingle();
+
+      if (error) throw error;
+
+      if (data) {
+        const baseUrl = window.location.origin;
+        setShareUrl(`${baseUrl}/share/${data.share_token}`);
+        setShareViewCount(data.view_count || 0);
+      }
+    } catch (error) {
+      console.error("Error checking share:", error);
+    }
+
+    setShareDialogOpen(true);
+  };
+
+  const generateShareLink = async (expiresInDays: number | null) => {
+    if (!currentProjectId) return;
+
+    try {
+      setIsGeneratingShare(true);
+      const { data, error } = await supabase.functions.invoke("generate-share-link", {
+        body: { project_id: currentProjectId, expires_in_days: expiresInDays },
+      });
+
+      if (error) throw error;
+
+      const baseUrl = window.location.origin;
+      setShareUrl(`${baseUrl}/share/${data.share_token}`);
+      setShareViewCount(0);
+
+      toast({
+        title: "Success",
+        description: "Share link generated successfully",
+      });
+    } catch (error: any) {
+      console.error("Error generating share link:", error);
+      toast({
+        title: "Error",
+        description: error.message || "Failed to generate share link",
+        variant: "destructive",
+      });
+    } finally {
+      setIsGeneratingShare(false);
+    }
+  };
+
+  const deactivateShare = async () => {
+    if (!currentProjectId || !shareUrl) return;
+
+    try {
+      const token = shareUrl.split("/share/")[1];
+      const { error } = await supabase
+        .from("public_shares")
+        .update({ is_active: false })
+        .eq("share_token", token);
+
+      if (error) throw error;
+
+      setShareUrl(null);
+      setShareDialogOpen(false);
+
+      toast({
+        title: "Success",
+        description: "Share link deactivated",
+      });
+    } catch (error: any) {
+      console.error("Error deactivating share:", error);
+      toast({
+        title: "Error",
+        description: "Failed to deactivate share link",
         variant: "destructive",
       });
     }
@@ -212,22 +394,48 @@ const Index = () => {
 
         {script && (
           <div className="space-y-8">
-            <div className="flex gap-3 justify-end">
+            <div className="flex gap-3 justify-end flex-wrap">
               <Button variant="outline" size="sm" onClick={saveProject}>
                 <Download className="h-4 w-4 mr-2" />
                 Save Project
               </Button>
+              <Button variant="outline" size="sm" onClick={handleExport}>
+                <FileDown className="h-4 w-4 mr-2" />
+                Export PDF
+              </Button>
+              <Button variant="outline" size="sm" onClick={handleShare}>
+                <Share2 className="h-4 w-4 mr-2" />
+                Share
+              </Button>
             </div>
 
-            <ScriptDisplay title={script.title} scenes={script.scenes} />
-            
-            <StoryboardDisplay 
-              images={storyboardImages} 
-              scenes={script.scenes}
-              isGenerating={isGeneratingImages}
-            />
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+              <div className="lg:col-span-2 space-y-8">
+                <ScriptDisplay title={script.title} scenes={script.scenes} />
+                
+                <StoryboardDisplay 
+                  images={storyboardImages} 
+                  scenes={script.scenes}
+                  isGenerating={isGeneratingImages}
+                />
+              </div>
+
+              <div>
+                <DurationSummary scenes={script.scenes} />
+              </div>
+            </div>
           </div>
         )}
+
+        <ShareDialog
+          open={shareDialogOpen}
+          onOpenChange={setShareDialogOpen}
+          shareUrl={shareUrl}
+          isGenerating={isGeneratingShare}
+          viewCount={shareViewCount}
+          onGenerate={generateShareLink}
+          onDeactivate={shareUrl ? deactivateShare : undefined}
+        />
       </main>
     </div>
   );
