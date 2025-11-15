@@ -1,5 +1,5 @@
 import { Button } from "@/components/ui/button";
-import { Film, LogOut, FolderOpen, Home } from "lucide-react";
+import { Film, LogOut, FolderOpen, Home, BarChart3, FileText, Users } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useNavigate, Link } from "react-router-dom";
 import { useToast } from "@/hooks/use-toast";
@@ -46,7 +46,25 @@ const Navigation = () => {
             <Button variant="ghost" size="sm" asChild>
               <Link to="/projects">
                 <FolderOpen className="h-4 w-4 mr-2" />
-                My Projects
+                Projects
+              </Link>
+            </Button>
+            <Button variant="ghost" size="sm" asChild>
+              <Link to="/templates">
+                <FileText className="h-4 w-4 mr-2" />
+                Templates
+              </Link>
+            </Button>
+            <Button variant="ghost" size="sm" asChild>
+              <Link to="/analytics">
+                <BarChart3 className="h-4 w-4 mr-2" />
+                Analytics
+              </Link>
+            </Button>
+            <Button variant="ghost" size="sm" asChild>
+              <Link to="/teams">
+                <Users className="h-4 w-4 mr-2" />
+                Teams
               </Link>
             </Button>
             <Button variant="ghost" size="sm" onClick={handleSignOut}>
