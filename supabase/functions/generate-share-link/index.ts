@@ -1,24 +1,30 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
-};
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2.58.0";
+import { getCorsHeaders, handleCorsPreflightRequest, createErrorResponse } from "../_shared/cors.ts";
+import { checkRateLimit, getRateLimitHeaders, RATE_LIMITS } from "../_shared/rate-limit.ts";
+import { validateShareLinkInput } from "../_shared/validation.ts";
 
 serve(async (req) => {
+  // Handle CORS preflight
   if (req.method === "OPTIONS") {
-    return new Response(null, { headers: corsHeaders });
+    return handleCorsPreflightRequest(req);
   }
 
   try {
-    const { project_id, expires_in_days } = await req.json();
+    // Parse and validate input
+    const body = await req.json();
+    const validation = validateShareLinkInput(body);
 
-    if (!project_id) {
-      return new Response(
-        JSON.stringify({ error: "project_id is required" }),
-        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
+    if (!validation.success) {
+      return createErrorResponse(req, validation.error || 'Invalid input', 400);
+    }
+
+    const { project_id, expires_in_days } = validation.data!;
+
+    // Create Supabase client with user's auth
+    const authHeader = req.headers.get("Authorization");
+    if (!authHeader) {
+      return createErrorResponse(req, "Unauthorized", 401);
     }
 
     const supabaseClient = createClient(
@@ -26,20 +32,34 @@ serve(async (req) => {
       Deno.env.get("SUPABASE_ANON_KEY") ?? "",
       {
         global: {
-          headers: { Authorization: req.headers.get("Authorization")! },
+          headers: { Authorization: authHeader },
         },
       }
     );
 
     // Get the authenticated user
-    const {
-      data: { user },
-    } = await supabaseClient.auth.getUser();
+    const { data: { user } } = await supabaseClient.auth.getUser();
 
     if (!user) {
+      return createErrorResponse(req, "Unauthorized", 401);
+    }
+
+    // Check rate limit
+    const rateLimitResult = checkRateLimit({
+      identifier: user.id,
+      endpoint: 'generate-share-link',
+      ...RATE_LIMITS.generateShareLink,
+    });
+
+    if (!rateLimitResult.allowed) {
+      const headers = {
+        ...getCorsHeaders(req),
+        ...getRateLimitHeaders(rateLimitResult),
+        'Content-Type': 'application/json',
+      };
       return new Response(
-        JSON.stringify({ error: "Unauthorized" }),
-        { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        JSON.stringify({ error: 'Rate limit exceeded. Please try again later.' }),
+        { status: 429, headers }
       );
     }
 
@@ -52,10 +72,7 @@ serve(async (req) => {
       .single();
 
     if (projectError || !project) {
-      return new Response(
-        JSON.stringify({ error: "Project not found or unauthorized" }),
-        { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
+      return createErrorResponse(req, "Project not found or unauthorized", 404);
     }
 
     // Check if an active share already exists
@@ -100,21 +117,23 @@ serve(async (req) => {
 
     if (shareError) {
       console.error("Error creating share:", shareError);
-      return new Response(
-        JSON.stringify({ error: "Failed to create share link" }),
-        { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
+      return createErrorResponse(req, "Failed to create share link", 500);
     }
+
+    // Add rate limit headers to successful response
+    const headers = {
+      ...getCorsHeaders(req),
+      ...getRateLimitHeaders(rateLimitResult),
+      'Content-Type': 'application/json',
+    };
 
     return new Response(
       JSON.stringify({ share_token: newShare.share_token }),
-      { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      { status: 200, headers }
     );
   } catch (error) {
     console.error("Error in generate-share-link:", error);
-    return new Response(
-      JSON.stringify({ error: error instanceof Error ? error.message : "Unknown error" }),
-      { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-    );
+    const errorMessage = error instanceof Error ? error.message : "An unexpected error occurred";
+    return createErrorResponse(req, errorMessage, 500);
   }
 });

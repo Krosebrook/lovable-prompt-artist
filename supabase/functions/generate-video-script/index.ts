@@ -1,22 +1,67 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
-
-const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-};
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2.58.0";
+import { getCorsHeaders, handleCorsPreflightRequest, createJsonResponse, createErrorResponse } from "../_shared/cors.ts";
+import { checkRateLimit, getRateLimitHeaders, RATE_LIMITS } from "../_shared/rate-limit.ts";
+import { validateGenerateScriptInput } from "../_shared/validation.ts";
 
 serve(async (req) => {
+  // Handle CORS preflight
   if (req.method === 'OPTIONS') {
-    return new Response(null, { headers: corsHeaders });
+    return handleCorsPreflightRequest(req);
   }
 
   try {
-    const { topic } = await req.json();
+    // Parse and validate input
+    const body = await req.json();
+    const validation = validateGenerateScriptInput(body);
+
+    if (!validation.success) {
+      return createErrorResponse(req, validation.error || 'Invalid input', 400);
+    }
+
+    const { topic } = validation.data!;
+
+    // Get user from auth header for rate limiting
+    const authHeader = req.headers.get('Authorization');
+    let userId = 'anonymous';
+
+    if (authHeader) {
+      const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
+      const supabaseKey = Deno.env.get('SUPABASE_ANON_KEY')!;
+      const supabase = createClient(supabaseUrl, supabaseKey, {
+        global: { headers: { Authorization: authHeader } },
+      });
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user) {
+        userId = user.id;
+      }
+    }
+
+    // Check rate limit
+    const rateLimitResult = checkRateLimit({
+      identifier: userId,
+      endpoint: 'generate-script',
+      ...RATE_LIMITS.generateScript,
+    });
+
+    if (!rateLimitResult.allowed) {
+      const headers = {
+        ...getCorsHeaders(req),
+        ...getRateLimitHeaders(rateLimitResult),
+        'Content-Type': 'application/json',
+      };
+      return new Response(
+        JSON.stringify({ error: 'Rate limit exceeded. Please try again later.' }),
+        { status: 429, headers }
+      );
+    }
+
     console.log('Generating video script for topic:', topic);
 
     const LOVABLE_API_KEY = Deno.env.get('LOVABLE_API_KEY');
     if (!LOVABLE_API_KEY) {
-      throw new Error('LOVABLE_API_KEY is not configured');
+      console.error('LOVABLE_API_KEY is not configured');
+      return createErrorResponse(req, 'Server configuration error', 500);
     }
 
     // Generate video script
@@ -32,7 +77,7 @@ serve(async (req) => {
           {
             role: 'system',
             content: `You are a professional video scriptwriter. Create engaging, structured video scripts.
-            
+
 Format your response as JSON with this structure:
 {
   "title": "Video title",
@@ -60,12 +105,12 @@ Make scripts engaging, clear, and visually descriptive. Typically 4-6 scenes for
     if (!scriptResponse.ok) {
       const errorText = await scriptResponse.text();
       console.error('AI gateway error:', scriptResponse.status, errorText);
-      throw new Error(`AI generation failed: ${scriptResponse.status}`);
+      return createErrorResponse(req, 'Failed to generate script. Please try again.', 502);
     }
 
     const scriptData = await scriptResponse.json();
     const scriptContent = scriptData.choices[0].message.content;
-    console.log('Generated script:', scriptContent);
+    console.log('Generated script successfully');
 
     // Parse the JSON response
     let parsedScript;
@@ -76,26 +121,24 @@ Make scripts engaging, clear, and visually descriptive. Typically 4-6 scenes for
       parsedScript = JSON.parse(jsonStr);
     } catch (e) {
       console.error('Failed to parse script JSON:', e);
-      throw new Error('Failed to parse generated script');
+      return createErrorResponse(req, 'Failed to parse generated script', 500);
     }
+
+    // Add rate limit headers to successful response
+    const headers = {
+      ...getCorsHeaders(req),
+      ...getRateLimitHeaders(rateLimitResult),
+      'Content-Type': 'application/json',
+    };
 
     return new Response(
       JSON.stringify({ script: parsedScript }),
-      { 
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        status: 200 
-      }
+      { status: 200, headers }
     );
 
   } catch (error) {
     console.error('Error in generate-video-script:', error);
-    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-    return new Response(
-      JSON.stringify({ error: errorMessage }),
-      { 
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        status: 500 
-      }
-    );
+    const errorMessage = error instanceof Error ? error.message : 'An unexpected error occurred';
+    return createErrorResponse(req, errorMessage, 500);
   }
 });
