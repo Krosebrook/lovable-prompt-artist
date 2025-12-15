@@ -50,8 +50,8 @@ export const CommentThread = ({ projectId, sceneNumber }: CommentThreadProps) =>
 
   const loadComments = async () => {
     try {
-      let query = (supabase
-        .from('project_comments') as any)
+      let query = (supabase as any)
+        .from('project_comments')
         .select('*')
         .eq('project_id', projectId)
         .order('created_at', { ascending: true });
@@ -78,7 +78,7 @@ export const CommentThread = ({ projectId, sceneNumber }: CommentThreadProps) =>
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error("Not authenticated");
 
-      const { error } = await (supabase.from('project_comments') as any).insert({
+      const { error } = await (supabase as any).from('project_comments').insert({
         project_id: projectId,
         user_id: user.id,
         scene_number: sceneNumber,

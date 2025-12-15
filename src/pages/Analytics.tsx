@@ -38,8 +38,8 @@ const Analytics = () => {
       if (!user) return;
 
       // Load analytics events
-      const { data: analytics } = await (supabase
-        .from('project_analytics') as any)
+      const { data: analytics } = await (supabase as any)
+        .from('project_analytics')
         .select('*')
         .eq('user_id', user.id)
         .order('created_at', { ascending: false });

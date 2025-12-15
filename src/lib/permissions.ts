@@ -20,8 +20,8 @@ export const hasPermission = async (
     if (project?.user_id === user.id) return true;
 
     // Check collaborator role
-    const { data: collaborator } = await (supabase
-      .from('project_collaborators') as any)
+    const { data: collaborator } = await (supabase as any)
+      .from('project_collaborators')
       .select('role')
       .eq('project_id', projectId)
       .eq('user_id', user.id)
@@ -55,8 +55,8 @@ export const getUserRole = async (projectId: string): Promise<AppRole | 'owner' 
 
     if (project?.user_id === user.id) return 'owner';
 
-    const { data: collaborator } = await (supabase
-      .from('project_collaborators') as any)
+    const { data: collaborator } = await (supabase as any)
+      .from('project_collaborators')
       .select('role')
       .eq('project_id', projectId)
       .eq('user_id', user.id)

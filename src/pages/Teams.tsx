@@ -30,8 +30,8 @@ const Teams = () => {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
 
-      const { data, error } = await (supabase
-        .from('teams') as any)
+      const { data, error } = await (supabase as any)
+        .from('teams')
         .select('*, team_members(count)')
         .or(`owner_id.eq.${user.id},team_members.user_id.eq.${user.id}`)
         .order('created_at', { ascending: false });
