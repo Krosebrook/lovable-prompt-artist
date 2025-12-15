@@ -1,27 +1,72 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
-
-const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-};
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2.58.0";
+import { getCorsHeaders, handleCorsPreflightRequest, createErrorResponse } from "../_shared/cors.ts";
+import { checkRateLimit, getRateLimitHeaders, RATE_LIMITS } from "../_shared/rate-limit.ts";
+import { validateSceneInput } from "../_shared/validation.ts";
 
 serve(async (req) => {
+  // Handle CORS preflight
   if (req.method === 'OPTIONS') {
-    return new Response(null, { headers: corsHeaders });
+    return handleCorsPreflightRequest(req);
   }
 
   try {
-    const { scene } = await req.json();
+    // Parse and validate input
+    const body = await req.json();
+    const validation = validateSceneInput(body);
+
+    if (!validation.success) {
+      return createErrorResponse(req, validation.error || 'Invalid input', 400);
+    }
+
+    const { scene } = validation.data!;
+
+    // Get user from auth header for rate limiting
+    const authHeader = req.headers.get('Authorization');
+    let userId = 'anonymous';
+
+    if (authHeader) {
+      const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
+      const supabaseKey = Deno.env.get('SUPABASE_ANON_KEY')!;
+      const supabase = createClient(supabaseUrl, supabaseKey, {
+        global: { headers: { Authorization: authHeader } },
+      });
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user) {
+        userId = user.id;
+      }
+    }
+
+    // Check rate limit
+    const rateLimitResult = checkRateLimit({
+      identifier: userId,
+      endpoint: 'generate-storyboard',
+      ...RATE_LIMITS.generateStoryboard,
+    });
+
+    if (!rateLimitResult.allowed) {
+      const headers = {
+        ...getCorsHeaders(req),
+        ...getRateLimitHeaders(rateLimitResult),
+        'Content-Type': 'application/json',
+      };
+      return new Response(
+        JSON.stringify({ error: 'Rate limit exceeded. Please try again later.' }),
+        { status: 429, headers }
+      );
+    }
+
     console.log('Generating storyboard image for scene:', scene.sceneNumber);
 
     const LOVABLE_API_KEY = Deno.env.get('LOVABLE_API_KEY');
     if (!LOVABLE_API_KEY) {
-      throw new Error('LOVABLE_API_KEY is not configured');
+      console.error('LOVABLE_API_KEY is not configured');
+      return createErrorResponse(req, 'Server configuration error', 500);
     }
 
     // Create a detailed prompt for image generation
-    const imagePrompt = `Create a professional video storyboard frame: ${scene.visualDescription}. 
-    Style: Clean, professional video production storyboard aesthetic. 
+    const imagePrompt = `Create a professional video storyboard frame: ${scene.visualDescription}.
+    Style: Clean, professional video production storyboard aesthetic.
     Composition: Cinematic framing, clear subject focus.
     Quality: High quality, detailed, suitable for video production planning.`;
 
@@ -47,7 +92,7 @@ serve(async (req) => {
     if (!imageResponse.ok) {
       const errorText = await imageResponse.text();
       console.error('AI image generation error:', imageResponse.status, errorText);
-      throw new Error(`Image generation failed: ${imageResponse.status}`);
+      return createErrorResponse(req, 'Failed to generate image. Please try again.', 502);
     }
 
     const imageData = await imageResponse.json();
@@ -55,31 +100,29 @@ serve(async (req) => {
 
     // Extract the base64 image from the response
     const imageUrl = imageData.choices?.[0]?.message?.images?.[0]?.image_url?.url;
-    
+
     if (!imageUrl) {
-      throw new Error('No image URL in response');
+      return createErrorResponse(req, 'No image generated. Please try again.', 500);
     }
 
+    // Add rate limit headers to successful response
+    const headers = {
+      ...getCorsHeaders(req),
+      ...getRateLimitHeaders(rateLimitResult),
+      'Content-Type': 'application/json',
+    };
+
     return new Response(
-      JSON.stringify({ 
+      JSON.stringify({
         sceneNumber: scene.sceneNumber,
-        imageUrl: imageUrl 
+        imageUrl: imageUrl
       }),
-      { 
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        status: 200 
-      }
+      { status: 200, headers }
     );
 
   } catch (error) {
     console.error('Error in generate-storyboard:', error);
-    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-    return new Response(
-      JSON.stringify({ error: errorMessage }),
-      { 
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        status: 500 
-      }
-    );
+    const errorMessage = error instanceof Error ? error.message : 'An unexpected error occurred';
+    return createErrorResponse(req, errorMessage, 500);
   }
 });
