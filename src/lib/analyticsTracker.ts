@@ -18,7 +18,7 @@ export const logAnalyticsEvent = async (
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return;
 
-    await (supabase.from('project_analytics') as any).insert({
+    await (supabase as any).from('project_analytics').insert({
       event_type: eventType,
       project_id: projectId,
       metadata: metadata
@@ -33,8 +33,8 @@ export const getAnalyticsSummary = async () => {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return null;
 
-    const { data, error } = await (supabase
-      .from('project_analytics') as any)
+    const { data, error } = await (supabase as any)
+      .from('project_analytics')
       .select('*')
       .eq('user_id', user.id);
 

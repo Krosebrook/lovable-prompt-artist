@@ -38,7 +38,7 @@ const Templates = () => {
 
   const loadTemplates = async () => {
     try {
-      const { data, error } = await supabase
+      const { data, error } = await (supabase as any)
         .from('script_templates')
         .select('*')
         .order('usage_count', { ascending: false });
